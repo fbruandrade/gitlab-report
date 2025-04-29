@@ -67,13 +67,17 @@ def get_production_environment(project: gitlab.v4.objects.Project) -> Optional[D
         return None
 
 
-def get_environment_deployments(project: gitlab.v4.objects.Project, environment_id: int) -> List[Dict[str, Any]]:
-    """Get deployments for a specific environment."""
+def get_environment_last_deployment(project: gitlab.v4.objects.Project, environment_id: int) -> Optional[Dict[str, Any]]:
+    """Get the last deployment for a specific environment."""
     try:
-        return project.environments.get(environment_id).deployments.list(all=True)
+        env = project.environments.get(environment_id)
+        if hasattr(env, 'last_deployment') and env.last_deployment:
+            return env.last_deployment
+        print("No last deployment found for the environment.")
+        return None
     except Exception as e:
-        print(f"Error retrieving deployments: {e}")
-        return []
+        print(f"Error retrieving last deployment: {e}")
+        return None
 
 
 def is_valid_tag_format(tag: str) -> bool:
@@ -82,40 +86,31 @@ def is_valid_tag_format(tag: str) -> bool:
     return bool(re.match(pattern, tag))
 
 
-def check_tag_deployment(deployments: List[Dict[str, Any]], tag: Optional[str] = None) -> None:
+def check_tag_deployment(deployment: Optional[Dict[str, Any]], tag: Optional[str] = None) -> None:
     """
     Check if a specific tag has been deployed to production or show the latest deployed tag.
 
     Args:
-        deployments: List of deployment objects
+        deployment: The last deployment object
         tag: Optional tag to check (if None, will show the latest tag)
     """
-    if not deployments:
-        print("No deployments found for the production environment.")
+    if not deployment:
+        print("No deployment found for the production environment.")
         return
 
-    # Sort deployments by created_at in descending order (newest first)
-    sorted_deployments = sorted(deployments, key=lambda d: d.created_at, reverse=True)
+    # Get the latest tag
+    latest_tag = deployment.ref
 
-    # Get the latest deployment
-    latest_deployment = sorted_deployments[0]
-    latest_tag = latest_deployment.ref
+    print(f"Latest tag deployed to production: {latest_tag} (deployed at {deployment.created_at})")
 
-    print(f"Latest tag deployed to production: {latest_tag} (deployed at {latest_deployment.created_at})")
-
-    # If a specific tag was provided, check if it has been deployed
+    # If a specific tag was provided, check if it matches the latest deployment
     if tag:
         if not is_valid_tag_format(tag):
             print(f"Warning: The provided tag '{tag}' does not follow the expected format vx.y.z")
 
-        tag_found = False
-        for deployment in sorted_deployments:
-            if deployment.ref == tag:
-                print(f"Tag {tag} was deployed to production at {deployment.created_at}")
-                tag_found = True
-                break
-
-        if not tag_found:
+        if deployment.ref == tag:
+            print(f"Tag {tag} was deployed to production at {deployment.created_at}")
+        else:
             print(f"Tag {tag} has not been deployed to production yet.")
 
 
